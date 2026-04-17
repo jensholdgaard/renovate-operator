@@ -214,6 +214,10 @@ spec:
             {{- if .Values.telemetry.forwardToJobs }}
             - name: RENOVATE_FORWARD_OTEL
               value: "true"
+            {{- if .Values.telemetry.jobEndpoint }}
+            - name: RENOVATE_JOB_OTEL_ENDPOINT
+              value: {{ .Values.telemetry.jobEndpoint | quote }}
+            {{- end }}
             {{- end }}
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}

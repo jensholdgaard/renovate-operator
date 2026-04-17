@@ -368,21 +368,26 @@ func mergeEnvVars(extraEnv []v1.EnvVar, predefinedEnv []v1.EnvVar) []v1.EnvVar {
 // RENOVATE_FORWARD_OTEL is set to "true". This enables Renovate's built-in OTLP
 // export in Job containers. Returns nil when forwarding is disabled.
 // Note: OTEL_EXPORTER_OTLP_PROTOCOL is intentionally not forwarded because
-// Renovate uses OTLP/HTTP while the operator uses gRPC.
+// Renovate uses OTLP/HTTP while the operator uses gRPC. The endpoint is read
+// from RENOVATE_JOB_OTEL_ENDPOINT first (allows pointing Jobs at the HTTP port),
+// falling back to OTEL_EXPORTER_OTLP_ENDPOINT.
 func otelEnvVarsForJobs(traceparent string) []v1.EnvVar {
 	if os.Getenv("RENOVATE_FORWARD_OTEL") != "true" {
 		return nil
 	}
 
-	forwardVars := []string{
-		"OTEL_EXPORTER_OTLP_ENDPOINT",
-		"OTEL_SERVICE_NAMESPACE",
-	}
 	var envs []v1.EnvVar
-	for _, key := range forwardVars {
-		if val := os.Getenv(key); val != "" {
-			envs = append(envs, v1.EnvVar{Name: key, Value: val})
-		}
+
+	// Prefer dedicated job endpoint (HTTP/4318) over operator endpoint (gRPC/4317)
+	jobEndpoint := os.Getenv("RENOVATE_JOB_OTEL_ENDPOINT")
+	if jobEndpoint == "" {
+		jobEndpoint = os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+	}
+	if jobEndpoint != "" {
+		envs = append(envs, v1.EnvVar{Name: "OTEL_EXPORTER_OTLP_ENDPOINT", Value: jobEndpoint})
+	}
+	if val := os.Getenv("OTEL_SERVICE_NAMESPACE"); val != "" {
+		envs = append(envs, v1.EnvVar{Name: "OTEL_SERVICE_NAMESPACE", Value: val})
 	}
 	envs = append(envs,
 		v1.EnvVar{Name: "OTEL_SERVICE_NAME", Value: "renovate"},
