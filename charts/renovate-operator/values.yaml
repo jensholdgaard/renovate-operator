@@ -315,5 +315,5 @@ telemetry:
   endpoint: ""
   # -- OTLP protocol: "grpc" or "http/protobuf"
   protocol: "grpc"
-  # -- forward OTEL_* env vars to Renovate Jobs created by the operator
+  # -- forward OTEL_* env vars to Renovate Jobs (uses Renovate's native OTLP/HTTP exporter)
   forwardToJobs: false

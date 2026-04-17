@@ -323,7 +323,7 @@ func (e *renovateExecutor) dispatchScheduled(ctx context.Context, renovateJobs [
 			continue
 		}
 
-		k8sJob := newRenovateJob(renovateJob, project.Name)
+		k8sJob := newRenovateJob(renovateJob, project.Name, traceparentFromContext(ctx))
 		if err := controllerutil.SetControllerReference(renovateJob, k8sJob, e.scheme); err != nil {
 			return fmt.Errorf("failed to set controller reference: %w", err)
 		}

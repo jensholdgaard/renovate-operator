@@ -195,7 +195,7 @@ func (e *discoveryAgent) CreateDiscoveryJob(ctx context.Context, renovateJob api
 	lock.Lock()
 	defer lock.Unlock()
 
-	discoveryJob := newDiscoveryJob(&renovateJob)
+	discoveryJob := newDiscoveryJob(&renovateJob, traceparentFromContext(ctx))
 	if err := controllerutil.SetControllerReference(&renovateJob, discoveryJob, e.scheme); err != nil {
 		return "", fmt.Errorf("failed to set controller reference: %w", err)
 	}

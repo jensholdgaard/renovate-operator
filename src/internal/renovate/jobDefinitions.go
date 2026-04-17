@@ -17,9 +17,9 @@ import (
 )
 
 // create job spec for a discovery job
-func newDiscoveryJob(job *api.RenovateJob) *batchv1.Job {
+func newDiscoveryJob(job *api.RenovateJob, traceparent string) *batchv1.Job {
 	predefinedEnvVars := getDefaultEnvVars(job)
-	predefinedEnvVars = append(predefinedEnvVars, otelEnvVarsForJobs()...)
+	predefinedEnvVars = append(predefinedEnvVars, otelEnvVarsForJobs(traceparent)...)
 
 	if len(job.Spec.DiscoveryFilters) > 0 {
 		filter := strings.Join(job.Spec.DiscoveryFilters, ",")
@@ -52,6 +52,12 @@ func newDiscoveryJob(job *api.RenovateJob) *batchv1.Job {
 
 	volumes, volumeMounts := getVolumeAndMounts(job)
 
+	discoveryCmd := `BASE_DIR="${RENOVATE_BASE_DIR:-/tmp}"; renovate --autodiscover --write-discovered-repos "$BASE_DIR/repos.json" >> "$BASE_DIR/logs.json" 2>&1 && cat "$BASE_DIR/repos.json" || cat "$BASE_DIR/logs.json"`
+	if otelWrapperEnabled(traceparent) {
+		wrapped := `BASE_DIR="${RENOVATE_BASE_DIR:-/tmp}"; ` + wrapCommand("renovate", `--autodiscover`, `--write-discovered-repos`, `"$BASE_DIR/repos.json"`) + ` >> "$BASE_DIR/logs.json" 2>&1 && cat "$BASE_DIR/repos.json" || cat "$BASE_DIR/logs.json"`
+		discoveryCmd = wrapperPreamble() + wrapped
+	}
+
 	batchJob := &batchv1.Job{
 		Spec: batchv1.JobSpec{
 			ActiveDeadlineSeconds:   getJobTimeoutSeconds(),
@@ -66,7 +72,7 @@ func newDiscoveryJob(job *api.RenovateJob) *batchv1.Job {
 						{
 							Name:            "discovery",
 							Command:         []string{"/bin/sh", "-c"},
-							Args:            []string{`BASE_DIR="${RENOVATE_BASE_DIR:-/tmp}"; renovate --autodiscover --write-discovered-repos "$BASE_DIR/repos.json" >> "$BASE_DIR/logs.json" 2>&1 && cat "$BASE_DIR/repos.json" || cat "$BASE_DIR/logs.json"`},
+							Args:            []string{discoveryCmd},
 							Image:           job.Spec.Image,
 							Env:             mergeEnvVars(job.Spec.ExtraEnv, predefinedEnvVars),
 							EnvFrom:         envFromSecrets,
@@ -103,9 +109,9 @@ func newDiscoveryJob(job *api.RenovateJob) *batchv1.Job {
 }
 
 // create a Job spec for renovate run on project...
-func newRenovateJob(job *api.RenovateJob, project string) *batchv1.Job {
+func newRenovateJob(job *api.RenovateJob, project string, traceparent string) *batchv1.Job {
 	predefinedEnvVars := getDefaultEnvVars(job)
-	predefinedEnvVars = append(predefinedEnvVars, otelEnvVarsForJobs()...)
+	predefinedEnvVars = append(predefinedEnvVars, otelEnvVarsForJobs(traceparent)...)
 
 	envFromSecrets := []v1.EnvFromSource{}
 	if job.Spec.SecretRef != "" {
@@ -123,6 +129,13 @@ func newRenovateJob(job *api.RenovateJob, project string) *batchv1.Job {
 
 	volumes, volumeMounts := getVolumeAndMounts(job)
 
+	command := []string{"renovate"}
+	args := []string{project}
+	if otelWrapperEnabled(traceparent) {
+		command = []string{"/bin/sh", "-c"}
+		args = []string{wrapperPreamble() + wrapCommand("renovate", project)}
+	}
+
 	batchJob := &batchv1.Job{
 		Spec: batchv1.JobSpec{
 			ActiveDeadlineSeconds:   getJobTimeoutSeconds(),
@@ -136,8 +149,8 @@ func newRenovateJob(job *api.RenovateJob, project string) *batchv1.Job {
 					Containers: []v1.Container{
 						{
 							Name:            "renovate",
-							Command:         []string{"renovate"},
-							Args:            []string{project},
+							Command:         command,
+							Args:            args,
 							Image:           job.Spec.Image,
 							Env:             mergeEnvVars(job.Spec.ExtraEnv, predefinedEnvVars),
 							EnvFrom:         envFromSecrets,
@@ -354,14 +367,15 @@ func mergeEnvVars(extraEnv []v1.EnvVar, predefinedEnv []v1.EnvVar) []v1.EnvVar {
 // otelEnvVarsForJobs returns OTEL_* env vars to forward to Renovate Jobs when
 // RENOVATE_FORWARD_OTEL is set to "true". This enables Renovate's built-in OTLP
 // export in Job containers. Returns nil when forwarding is disabled.
-func otelEnvVarsForJobs() []v1.EnvVar {
+// Note: OTEL_EXPORTER_OTLP_PROTOCOL is intentionally not forwarded because
+// Renovate uses OTLP/HTTP while the operator uses gRPC.
+func otelEnvVarsForJobs(traceparent string) []v1.EnvVar {
 	if os.Getenv("RENOVATE_FORWARD_OTEL") != "true" {
 		return nil
 	}
 
 	forwardVars := []string{
 		"OTEL_EXPORTER_OTLP_ENDPOINT",
-		"OTEL_EXPORTER_OTLP_PROTOCOL",
 		"OTEL_SERVICE_NAMESPACE",
 	}
 	var envs []v1.EnvVar
@@ -374,6 +388,9 @@ func otelEnvVarsForJobs() []v1.EnvVar {
 		v1.EnvVar{Name: "OTEL_SERVICE_NAME", Value: "renovate"},
 		v1.EnvVar{Name: "RENOVATE_USE_CLOUD_METADATA_SERVICES", Value: "false"},
 	)
+	if traceparent != "" {
+		envs = append(envs, v1.EnvVar{Name: "TRACEPARENT", Value: traceparent})
+	}
 	return envs
 }
 
