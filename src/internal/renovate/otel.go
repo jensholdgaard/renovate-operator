@@ -54,7 +54,12 @@ async function main() {
 
   let otel;
   try {
-    const rdir = path.dirname(require.resolve('renovate/package.json'));
+    // Renovate's containerbase image installs to /usr/local/renovate.
+    // Try require.resolve first (works if NODE_PATH includes it), then
+    // fall back to the well-known containerbase path.
+    let rdir;
+    try { rdir = path.dirname(require.resolve('renovate/package.json')); }
+    catch (_) { rdir = '/usr/local/renovate'; }
     const r = (p) => require(path.join(rdir, 'node_modules', p));
 
     const api = r('@opentelemetry/api');
