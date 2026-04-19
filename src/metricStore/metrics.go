@@ -1,12 +1,22 @@
 package metricStore
 
 import (
+	"context"
 	"time"
 
+	api "renovate-operator/api/v1alpha1"
+
 	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
+	semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
 	ctrlmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 )
 
+var otelMeter = otel.Meter("renovate-operator/metrics")
+
+// Prometheus metrics
 var (
 	executorLoopDuration = prometheus.NewHistogram(
 		prometheus.HistogramOpts{
@@ -38,6 +48,20 @@ var (
 		[]string{"renovate_namespace", "renovate_job", "project"})
 )
 
+// OTel metrics — no-ops when OTel is not configured.
+var (
+	otelExecutorLoopDuration, _ = otelMeter.Float64Histogram(
+		"renovate_operator.executor.loop.duration",
+		metric.WithUnit("s"),
+		metric.WithDescription("Duration of each executor loop tick"),
+	)
+	otelProjectExecutions, _ = otelMeter.Int64Counter(
+		"renovate_operator.project.executions",
+		metric.WithUnit("{execution}"),
+		metric.WithDescription("Total executed Renovate project runs"),
+	)
+)
+
 func Register(registry ctrlmetrics.RegistererGatherer) {
 	registry.MustRegister(executorLoopDuration)
 	registry.MustRegister(projectRuns)
@@ -45,17 +69,42 @@ func Register(registry ctrlmetrics.RegistererGatherer) {
 	registry.MustRegister(dependencyIssues)
 }
 
-func ObserveExecutorLoopDuration(duration time.Duration) {
+func ObserveExecutorLoopDuration(ctx context.Context, duration time.Duration) {
 	executorLoopDuration.Observe(duration.Seconds())
+	if otelExecutorLoopDuration.Enabled(ctx) {
+		otelExecutorLoopDuration.Record(ctx, duration.Seconds())
+	}
 }
 
-func CaptureRenovateProjectExecution(namespace, job, project, status string) {
+func CaptureRenovateProjectExecution(ctx context.Context, namespace, job, project string, status api.RenovateProjectStatus) {
 	projectRuns.WithLabelValues(
 		namespace,
 		job,
 		project,
-		status,
+		string(status),
 	).Inc()
+	if otelProjectExecutions.Enabled(ctx) {
+		otelProjectExecutions.Add(ctx, 1,
+			metric.WithAttributes(
+				semconv.K8SNamespaceName(namespace),
+				semconv.CICDPipelineName(job),
+				MapPipelineResult(status),
+			),
+		)
+	}
+}
+
+// MapPipelineResult maps internal RenovateProjectStatus values to OTel semconv
+// cicd.pipeline.result enum values for interoperability with tracing backends.
+func MapPipelineResult(status api.RenovateProjectStatus) attribute.KeyValue {
+	switch status {
+	case api.JobStatusCompleted:
+		return semconv.CICDPipelineResultSuccess
+	case api.JobStatusFailed:
+		return semconv.CICDPipelineResultFailure
+	default:
+		return semconv.CICDPipelineResultKey.String(string(status))
+	}
 }
 
 // SetRunFailed sets the run_failed gauge for a project

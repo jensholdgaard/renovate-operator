@@ -1,6 +1,8 @@
 package metricStore
 
 import (
+	"context"
+	api "renovate-operator/api/v1alpha1"
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -74,7 +76,7 @@ func TestSetDependencyIssues(t *testing.T) {
 
 func TestCaptureRenovateProjectExecution(t *testing.T) {
 	// Capture a completed execution
-	CaptureRenovateProjectExecution("test-ns", "test-job", "test-project", "completed")
+	CaptureRenovateProjectExecution(context.Background(), "test-ns", "test-job", "test-project", api.JobStatusCompleted)
 
 	value := testutil.ToFloat64(projectRuns.WithLabelValues("test-ns", "test-job", "test-project", "completed"))
 	if value != 1.0 {
@@ -82,7 +84,7 @@ func TestCaptureRenovateProjectExecution(t *testing.T) {
 	}
 
 	// Capture another one - counter should increment
-	CaptureRenovateProjectExecution("test-ns", "test-job", "test-project", "completed")
+	CaptureRenovateProjectExecution(context.Background(), "test-ns", "test-job", "test-project", api.JobStatusCompleted)
 
 	value = testutil.ToFloat64(projectRuns.WithLabelValues("test-ns", "test-job", "test-project", "completed"))
 	if value != 2.0 {
@@ -100,8 +102,8 @@ func TestDeleteProjectMetrics(t *testing.T) {
 	// Setup: create metrics for a project
 	SetRunFailed(ns, job, proj, true)
 	SetDependencyIssues(ns, job, proj, true)
-	CaptureRenovateProjectExecution(ns, job, proj, "completed")
-	CaptureRenovateProjectExecution(ns, job, proj, "failed")
+	CaptureRenovateProjectExecution(context.Background(), ns, job, proj, api.JobStatusCompleted)
+	CaptureRenovateProjectExecution(context.Background(), ns, job, proj, api.JobStatusFailed)
 
 	// Verify metrics exist
 	if testutil.ToFloat64(runFailed.WithLabelValues(ns, job, proj)) != 1.0 {
