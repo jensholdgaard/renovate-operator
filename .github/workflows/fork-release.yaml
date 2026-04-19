@@ -1,0 +1,82 @@
+name: Fork Release (OTel test)
+
+on:
+  push:
+    branches: [ci/otel-release]
+
+env:
+  VERSION: "4.4.0-otel.16"
+  IMAGE_NAME: ghcr.io/jensholdgaard/renovate-operator
+  REGISTRY: ghcr.io
+  HELMNAME: renovate-operator
+
+jobs:
+  build-and-push-docker:
+    name: Build Multi-arch Docker
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            VERSION=${{ env.VERSION }}
+            COMMIT_HASH=${{ github.sha }}
+          tags: |
+            ${{ env.IMAGE_NAME }}:${{ env.VERSION }}
+          provenance: false
+
+  helm-chart:
+    name: Package and Push Helm Chart
+    needs: [build-and-push-docker]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Package and push Helm chart
+        run: |
+          sed -i "s/^version:.*/version: $VERSION/" charts/renovate-operator/Chart.yaml
+          sed -i "s/^appVersion:.*/appVersion: $VERSION/" charts/renovate-operator/Chart.yaml
+
+          helm repo add valkey https://valkey.io/valkey-helm/
+          helm repo update
+          helm dependency build ./charts/renovate-operator
+          helm package -d /tmp/ ./charts/renovate-operator
+
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io --username ${{ github.actor }} --password-stdin
+          helm push /tmp/${{ env.HELMNAME }}-$VERSION.tgz oci://ghcr.io/${{ github.repository_owner }}/helm-charts
