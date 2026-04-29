@@ -1,3 +1,10 @@
+# [4.6.0](https://github.com/mogenius/renovate-operator/compare/4.5.2...4.6.0) (2026-04-29)
+
+
+### Features
+
+* **operator:** add OpenTelemetry instrumentation with traces, metrics, and log bridge ([8f303fd](https://github.com/mogenius/renovate-operator/commit/8f303fda04a2ee511ae0ad874c3a966b8fdc992d))
+
 ## [4.5.2](https://github.com/mogenius/renovate-operator/compare/4.5.1...4.5.2) (2026-04-27)
 
 
