@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-logr/logr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -23,6 +24,7 @@ import (
 	"renovate-operator/internal/kvstore"
 	"renovate-operator/internal/logStore"
 	"renovate-operator/internal/renovate"
+	"renovate-operator/internal/telemetry"
 	"renovate-operator/metricStore"
 	"renovate-operator/scheduler"
 	"renovate-operator/ui"
@@ -408,9 +410,8 @@ func main() {
 	cfg := ctrl.GetConfigOrDie()
 	adaptKubeConfig(cfg)
 
-	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
-
-	metricStore.Register(ctrlmetrics.Registry)
+	otelCleanup := initObservability(&opts)
+	defer otelCleanup()
 
 	watchNamespace := config.GetValue("WATCH_NAMESPACE")
 	leaderElectionID := config.GetValue("LEADER_ELECTION_ID")
@@ -492,4 +493,38 @@ func main() {
 
 	err = mgr.Start(ctx)
 	assert.NoError(err, "failed to start manager")
+}
+
+// initObservability sets up OpenTelemetry (traces, metrics, logs), configures the
+// controller-runtime logger with an OTel tee when enabled, and registers Prometheus
+// metrics. Returns a cleanup function that flushes OTel providers.
+func initObservability(zapOpts *zap.Options) func() {
+	initCtx, initCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer initCancel()
+	otelShutdown, otelEnabled, otelErr := telemetry.SetupOTelSDK(initCtx, Version)
+
+	zapLogger := zap.New(zap.UseFlagOptions(zapOpts))
+	if otelEnabled && otelErr == nil {
+		otelSink := telemetry.NewOTelLogSink("renovate-operator")
+		tee := telemetry.NewTeeLogSink(zapLogger.GetSink(), otelSink)
+		zapLogger = logr.New(tee)
+	}
+	ctrl.SetLogger(zapLogger)
+
+	if otelErr != nil {
+		ctrl.Log.WithName("telemetry").Error(otelErr, "failed to initialize OpenTelemetry")
+	}
+
+	metricStore.Register(ctrlmetrics.Registry)
+
+	if !otelEnabled || otelErr != nil {
+		return func() {}
+	}
+	return func() {
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutdownCancel()
+		if shutdownErr := otelShutdown(shutdownCtx); shutdownErr != nil {
+			ctrl.Log.WithName("telemetry").Error(shutdownErr, "failed to shut down OpenTelemetry")
+		}
+	}
 }
