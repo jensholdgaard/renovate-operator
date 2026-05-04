@@ -6,6 +6,7 @@ import (
 	"net/http"
 	api "renovate-operator/api/v1alpha1"
 	"renovate-operator/gitProviderClients"
+	"renovate-operator/gitProviderClients/azuredevopsProvider"
 	"renovate-operator/gitProviderClients/bitbucketProvider"
 	"renovate-operator/gitProviderClients/forgejoProvider"
 	"renovate-operator/gitProviderClients/giteaProvider"
@@ -64,6 +65,8 @@ func (f *gitProviderClientFactory) NewClient(ctx context.Context, job *api.Renov
 		return &forgejoProvider.ForgejoClient{Endpoint: endpoint, Token: token, HTTPClient: httpClient}, nil
 	case "bitbucket":
 		return &bitbucketProvider.BitbucketClient{Endpoint: endpoint, Token: token, HTTPClient: httpClient}, nil
+	case "azure":
+		return &azuredevopsProvider.AzureDevOpsClient{Endpoint: endpoint, Token: token, HTTPClient: httpClient}, nil
 	default:
 		return nil, fmt.Errorf("skipForks is not supported for platform %q", platform)
 	}
@@ -87,11 +90,11 @@ func readToken(ctx context.Context, c client.Client, job *api.RenovateJob) (stri
 	}
 
 	// Try common token key names in order of preference
-	for _, key := range []string{"RENOVATE_TOKEN", "GITHUB_COM_TOKEN", "GITLAB_TOKEN", "BITBUCKET_TOKEN", "GITEA_TOKEN", "FORGEJO_TOKEN"} {
+	for _, key := range []string{"RENOVATE_TOKEN", "AZURE_DEVOPS_TOKEN", "GITHUB_COM_TOKEN", "GITLAB_TOKEN", "BITBUCKET_TOKEN", "GITEA_TOKEN", "FORGEJO_TOKEN"} {
 		if val, ok := secret.Data[key]; ok && len(val) > 0 {
 			return string(val), nil
 		}
 	}
 
-	return "", fmt.Errorf("no platform token found in secret %s (expected one of: RENOVATE_TOKEN, GITHUB_COM_TOKEN, GITLAB_TOKEN, BITBUCKET_TOKEN, GITEA_TOKEN, FORGEJO_TOKEN)", job.Spec.SecretRef)
+	return "", fmt.Errorf("no platform token found in secret %s (expected one of: RENOVATE_TOKEN, AZURE_DEVOPS_TOKEN, GITHUB_COM_TOKEN, GITLAB_TOKEN, BITBUCKET_TOKEN, GITEA_TOKEN, FORGEJO_TOKEN)", job.Spec.SecretRef)
 }

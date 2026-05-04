@@ -1,0 +1,17 @@
+{
+  "id": "5e52f5a3-1234-4f9e-9c7a-8b9d6e3a1f2c",
+  "name": "my-application",
+  "url": "https://dev.azure.com/ExampleOrg/_apis/git/repositories/5e52f5a3-1234-4f9e-9c7a-8b9d6e3a1f2c",
+  "project": {
+    "id": "a1b2c3d4-5678-9012-3456-789012345678",
+    "name": "MyProject",
+    "state": "wellFormed",
+    "visibility": "private"
+  },
+  "defaultBranch": "refs/heads/main",
+  "size": 12345,
+  "remoteUrl": "https://ExampleOrg@dev.azure.com/ExampleOrg/MyProject/_git/my-application",
+  "sshUrl": "git@ssh.dev.azure.com:v3/ExampleOrg/MyProject/my-application",
+  "isFork": false,
+  "parentRepository": null
+}

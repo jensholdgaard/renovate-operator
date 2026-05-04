@@ -15,6 +15,11 @@ func GetPlatformAndEndpoint(provider *api.RenovateProvider) (string, string) {
 			endpoint = "https://api.github.com"
 		case "gitlab":
 			endpoint = "https://gitlab.com/api/v4"
+		case "azure":
+			// No default: Azure DevOps URLs require an organization segment
+			// (e.g., https://dev.azure.com/{org}). The user must configure
+			// provider.endpoint explicitly with their organization.
+			endpoint = ""
 		}
 	}
 	return provider.Name, endpoint

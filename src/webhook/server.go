@@ -43,6 +43,7 @@ func (s *Server) Run() {
 	sub.HandleFunc("/gitlab", s.gitLabWebhook).Methods("POST")
 	sub.HandleFunc("/github", s.githubWebhook).Methods("POST")
 	sub.HandleFunc("/forgejo", s.forgejoWebhook).Methods("POST")
+	sub.HandleFunc("/azure", s.azureDevOpsWebhook).Methods("POST")
 
 	port := config.GetValue("WEBHOOK_SERVER_PORT")
 
