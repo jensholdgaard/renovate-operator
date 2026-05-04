@@ -1,3 +1,10 @@
+## [4.6.1](https://github.com/mogenius/renovate-operator/compare/4.6.0...4.6.1) (2026-05-04)
+
+
+### Bug Fixes
+
+* add-cancel-job-button-and-represnent-prioritization-in-ui' ([cb67b61](https://github.com/mogenius/renovate-operator/commit/cb67b611431cfe3f443ca416930101f61e3ccac8))
+
 # [4.6.0](https://github.com/mogenius/renovate-operator/compare/4.5.2...4.6.0) (2026-04-29)
 
 
